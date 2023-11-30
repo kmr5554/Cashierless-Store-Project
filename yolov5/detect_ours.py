@@ -280,48 +280,94 @@ if __name__ == "__main__":
 
 
 @smart_inference_mode()
-def run(weights, source, imgsz=(640, 640), conf_thres=0.25, iou_thres=0.45, max_det=1000, device=''):
-    source = str(source)
-    save_img = not source.endswith('.txt')
-    imgsz = check_img_size(imgsz)  # check image size
+def run(
+        weights='weights/best.pt',  # model path or triton URL
+        source='data/images',  # file/dir/URL/glob/screen/0(webcam)
+        data='data/coco128.yaml',  # dataset.yaml path
+        imgsz=(640, 640),  # inference size (height, width)
+        conf_thres=0.6,  # confidence threshold
+        iou_thres=0.45,  # NMS IOU threshold
+        max_det=1000,  # maximum detections per image
+        device='',  # cuda device, i.e. 0 or 0,1,2,3 or cpu
+        save_txt=False,  # save results to *.txt
+        save_conf=False,  # save confidences in --save-txt labels
+        save_crop=False,  # save cropped prediction boxes
+        nosave=False,  # do not save images/videos
+        classes=None,  # filter by class: --class 0, or --class 0 2 3
+        agnostic_nms=False,  # class-agnostic NMS
+        augment=False,  # augmented inference
+        visualize=False,  # visualize features
+        update=False,  # update all models
+        project='runs/detect',  # save results to project/name
+        name='result',  # save results to project/name
+        exist_ok=False,  # existing project/name ok, do not increment
+        line_thickness=3,  # bounding box thickness (pixels)
+        hide_labels=False,  # hide labels
+        hide_conf=False,  # hide confidences
+        half=False,  # use FP16 half-precision inference
+        dnn=False,  # use OpenCV DNN for ONNX inference
+        vid_stride=1,  # video frame-rate stride
+    ):
+
+    # Directories
+    save_dir = Path(project) / name
+    save_dir.mkdir(parents=True, exist_ok=exist_ok)  # make directory
 
     # Load model
     device = select_device(device)
-    model = DetectMultiBackend(weights, device=device, data=None)
-    stride = model.stride
-    names = model.names
+    model = DetectMultiBackend(weights, device=device, dnn=dnn, data=data, fp16=half)
+    stride, names = model.stride, model.names
+    imgsz = check_img_size(imgsz, s=stride)  # check image size
 
     # Dataloader
-    dataset = LoadImages(source, img_size=imgsz, stride=stride)
+    if source.isnumeric():
+        dataset = LoadStreams(source, img_size=imgsz, stride=stride, auto=model.pt, vid_stride=vid_stride)
+    else:
+        dataset = LoadImages(source, img_size=imgsz, stride=stride, auto=model.pt, vid_stride=vid_stride)
 
-    # Run inference
+    # Run inference and process detections
     for path, im, im0s, vid_cap, s in dataset:
         im = torch.from_numpy(im).to(device)
-        im = im.float()  # uint8 to fp32
-        im /= 255  # normalize RGB
+        im = im.half() if model.fp16 else im.float()  # uint8 to fp16/32
+        im /= 255  # normalize to [0, 1] range
 
         # Inference
-        pred = model(im)
+        pred = model(im, augment=augment)
 
-        # Apply NMS
-        pred = non_max_suppression(pred, conf_thres, iou_thres, max_det=max_det)
+        # NMS
+        pred = non_max_suppression(pred, conf_thres, iou_thres, classes, agnostic_nms, max_det=max_det)
 
-        # Process predictions
-        for i, det in enumerate(pred):  # per image
-            p = Path(path)
-            annotator = Annotator(im0s, line_width=3, example=str(names))
+        # Process detections
+        for i, det in enumerate(pred):  # detections per image
+            p = Path(path)  # to Path
+            save_path = str(save_dir / p.name)  # img.jpg
+            annotator = Annotator(im0s, line_width=line_thickness, example=str(names))
 
             if len(det):
-                # Rescale boxes from img size to im0 size
+                # Rescale boxes from img_size to original size
                 det[:, :4] = scale_boxes(im.shape[2:], det[:, :4], im0s.shape).round()
 
                 # Write results
                 for *xyxy, conf, cls in reversed(det):
-                    label = f'{names[int(cls)]} {conf:.2f}'
-                    annotator.box_label(xyxy, label, color=colors(int(cls), True))
+                    if save_txt:  # Write to file
+                        xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()
+                        with open(f'{save_dir / p.stem}.txt', 'a') as f:
+                            f.write(f'{cls} {conf} {xywh}\n')
 
-            # Save results (image with detections)
+                    if save_img or view_img:  # Add box to image
+                        c = int(cls)
+                        label = f'{names[c]} {conf:.2f}'
+                        annotator.box_label(xyxy, label, color=colors(c, True))
+
+            # Save or show image
             if save_img:
-                annotator.save(p)
+                cv2.imwrite(save_path, im0s)
 
-    print(f"Results saved to {source}")
+    print('Results saved to:', save_dir)
+
+    def main(opt):
+        run(**vars(opt))
+
+    if __name__ == "__main__":
+        opt = parse_opt()  # opt는 main.py에서 제공된다고 가정합니다.
+        main(opt)
