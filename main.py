@@ -47,7 +47,7 @@ def parse_opt():
 
 def main(opt):
     check_requirements(exclude=('tensorboard', 'thop'))
-    run(**vars(opt))
+    run(**vars(opt))  # function for detect_ours.py
 
 if __name__ == '__main__':
     opt = parse_opt()

@@ -48,7 +48,7 @@ from utils.general import (LOGGER, Profile, check_file, check_img_size, check_im
 from utils.plots import Annotator, colors, save_one_box
 from utils.torch_utils import select_device, smart_inference_mode
 
-
+"""
 @smart_inference_mode()
 def run(
         weights=ROOT / 'yolov5s.pt',  # model path or triton URL
@@ -276,3 +276,52 @@ def main(opt):
 if __name__ == "__main__":
     opt = parse_opt()
     main(opt)
+"""
+
+
+@smart_inference_mode()
+def run(weights, source, imgsz=(640, 640), conf_thres=0.25, iou_thres=0.45, max_det=1000, device=''):
+    source = str(source)
+    save_img = not source.endswith('.txt')
+    imgsz = check_img_size(imgsz)  # check image size
+
+    # Load model
+    device = select_device(device)
+    model = DetectMultiBackend(weights, device=device, data=None)
+    stride = model.stride
+    names = model.names
+
+    # Dataloader
+    dataset = LoadImages(source, img_size=imgsz, stride=stride)
+
+    # Run inference
+    for path, im, im0s, vid_cap, s in dataset:
+        im = torch.from_numpy(im).to(device)
+        im = im.float()  # uint8 to fp32
+        im /= 255  # normalize RGB
+
+        # Inference
+        pred = model(im)
+
+        # Apply NMS
+        pred = non_max_suppression(pred, conf_thres, iou_thres, max_det=max_det)
+
+        # Process predictions
+        for i, det in enumerate(pred):  # per image
+            p = Path(path)
+            annotator = Annotator(im0s, line_width=3, example=str(names))
+
+            if len(det):
+                # Rescale boxes from img size to im0 size
+                det[:, :4] = scale_boxes(im.shape[2:], det[:, :4], im0s.shape).round()
+
+                # Write results
+                for *xyxy, conf, cls in reversed(det):
+                    label = f'{names[int(cls)]} {conf:.2f}'
+                    annotator.box_label(xyxy, label, color=colors(int(cls), True))
+
+            # Save results (image with detections)
+            if save_img:
+                annotator.save(p)
+
+    print(f"Results saved to {source}")
