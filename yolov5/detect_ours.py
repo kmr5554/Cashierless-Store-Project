@@ -48,7 +48,7 @@ from utils.general import (LOGGER, Profile, check_file, check_img_size, check_im
 from utils.plots import Annotator, colors, save_one_box
 from utils.torch_utils import select_device, smart_inference_mode
 
-"""
+
 @smart_inference_mode()
 def run(
         weights=ROOT / 'yolov5s.pt',  # model path or triton URL
@@ -69,8 +69,9 @@ def run(
         augment=False,  # augmented inference
         visualize=False,  # visualize features
         update=False,  # update all models
-        project=ROOT / 'yolov5/runs/detect',  # save results to project/name
-        name='main_exp',  # save results to project/name
+        #project=ROOT / 'yolov5/runs/detect',  # save results to project/name
+        project= 'runs/detect',  # save results to project/name
+        name='result',  # save results to project/name
         exist_ok=False,  # existing project/name ok, do not increment
         line_thickness=3,  # bounding box thickness (pixels)
         hide_labels=False,  # hide labels
@@ -78,7 +79,8 @@ def run(
         half=False,  # use FP16 half-precision inference
         dnn=False,  # use OpenCV DNN for ONNX inference
         vid_stride=1,  # video frame-rate stride
-        text_path=ROOT/ 'yolov5/runs/detect/main_exp'  # where detection results saved
+        #text_path=ROOT/ 'yolov5/runs/detect/main_exp'  # where detection results saved
+        text_path = 'runs/detect/main_exp'  # where detection results saved
 ):
     source = str(source)
     save_img = not nosave and not source.endswith('.txt')  # save inference images
@@ -276,100 +278,3 @@ def main(opt):
 if __name__ == "__main__":
     opt = parse_opt()
     main(opt)
-"""
-
-
-@smart_inference_mode()
-def run(
-        weights='yolov5s.pt',  # model path or triton URL
-        source='data/images',  # file/dir/URL/glob/screen/0(webcam)
-        data='data/coco128.yaml',  # dataset.yaml path
-        imgsz=(640, 640),  # inference size (height, width)
-        conf_thres=0.6,  # confidence threshold
-        iou_thres=0.45,  # NMS IOU threshold
-        max_det=1000,  # maximum detections per image
-        device='',  # cuda device, i.e. 0 or 0,1,2,3 or cpu
-        view_img=False,  # show results
-        save_txt=False,  # save results to *.txt
-        save_conf=False,  # save confidences in --save-txt labels
-        save_crop=False,  # save cropped prediction boxes
-        nosave=False,  # do not save images/videos
-        classes=None,  # filter by class: --class 0, or --class 0 2 3
-        agnostic_nms=False,  # class-agnostic NMS
-        augment=False,  # augmented inference
-        visualize=False,  # visualize features
-        update=False,  # update all models
-        project='runs/detect',  # save results to project/name
-        name='exp',  # save results to project/name
-        exist_ok=False,  # existing project/name ok, do not increment
-        line_thickness=3,  # bounding box thickness (pixels)
-        hide_labels=False,  # hide labels
-        hide_conf=False,  # hide confidences
-        half=False,  # use FP16 half-precision inference
-        dnn=False,  # use OpenCV DNN for ONNX inference
-        vid_stride=1,  # video frame-rate stride
-        text_path=None  # path of saved textfile (if needed)
-    ):
-
-    # Directories
-    save_dir = Path(project) / name
-    save_dir.mkdir(parents=True, exist_ok=exist_ok)  # make directory
-
-    # Load model
-    device = select_device(device)
-    model = DetectMultiBackend(weights, device=device, dnn=dnn, data=data, fp16=half)
-    stride, names = model.stride, model.names
-    imgsz = check_img_size(imgsz, s=stride)  # check image size
-
-    # Dataloader
-    if source.isnumeric():
-        dataset = LoadStreams(source, img_size=imgsz, stride=stride, auto=model.pt, vid_stride=vid_stride)
-    else:
-        dataset = LoadImages(source, img_size=imgsz, stride=stride, auto=model.pt, vid_stride=vid_stride)
-
-    # Run inference and process detections
-    for path, im, im0s, vid_cap, s in dataset:
-        im = torch.from_numpy(im).to(device)
-        im = im.half() if model.fp16 else im.float()  # uint8 to fp16/32
-        im /= 255  # normalize to [0, 1] range
-
-        # Inference
-        pred = model(im, augment=augment)
-
-        # NMS
-        pred = non_max_suppression(pred, conf_thres, iou_thres, classes, agnostic_nms, max_det=max_det)
-
-        # Process detections
-        for i, det in enumerate(pred):  # detections per image
-            p = Path(path)  # to Path
-            save_path = str(save_dir / p.name)  # img.jpg
-            annotator = Annotator(im0s, line_width=line_thickness, example=str(names))
-
-            if len(det):
-                # Rescale boxes from img_size to original size
-                det[:, :4] = scale_boxes(im.shape[2:], det[:, :4], im0s.shape).round()
-
-                # Write results
-                for *xyxy, conf, cls in reversed(det):
-                    if save_txt:  # Write to file
-                        xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()
-                        with open(f'{save_dir / p.stem}.txt', 'a') as f:
-                            f.write(f'{cls} {conf} {xywh}\n')
-
-                    if save_img or view_img:  # Add box to image
-                        c = int(cls)
-                        label = f'{names[c]} {conf:.2f}'
-                        annotator.box_label(xyxy, label, color=colors(c, True))
-
-            # Save or show image
-            if save_img:
-                cv2.imwrite(save_path, im0s)
-
-    print('Results saved to:', save_dir)
-
-    def main(opt):
-        run(**vars(opt))
-
-    if __name__ == "__main__":
-        opt = parse_opt()  # opt는 main.py에서 제공된다고 가정합니다.
-        main(opt)
