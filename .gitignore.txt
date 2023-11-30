@@ -1,0 +1,2 @@
+Cashierless-Store Project/custom_video
+Cashierless-Store Project/pyvenv.cfg
