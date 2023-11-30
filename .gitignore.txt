@@ -1,4 +1,3 @@
-Cashierless-Store Project/custom_video
-Cashierless-Store Project/pyvenv.cfg
-Cashierless-Store Project/video/camera1-5.zip
+pyvenv.cfg
+camera1-5.zip
 
